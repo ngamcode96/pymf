@@ -10,6 +10,7 @@ Matrix Factorization, Nature 401(6755), 788-799.
 """
 import numpy as np
 from base import PyMFBase
+import scipy
 
 __all__ = ["WNMF"]
 
@@ -29,6 +30,7 @@ class WNMF(PyMFBase):
         PyMFBase.__init__(self, data, num_bases, **kwargs)
         self.S = S
         self.S_sqrt = np.sqrt(S)
+        self.comp_S = (S - 1) * -1
 
     def _update_h(self):
         # pre init H1, and H2 (necessary for storing matrices on disk)
@@ -41,7 +43,44 @@ class WNMF(PyMFBase):
         W2 = np.dot(self.S_sqrt * np.dot(self.W, self.H), self.H.T) + 10**-9
         self.W *= np.dot(self.S_sqrt * self.data[:, :], self.H.T)
         self.W /= W2
-        self.W /= np.sqrt(np.sum(self.W**2.0, axis=0))
+        self.W /= np.sqrt(np.sum(self.W ** 2.0, axis=0))
+
+    def frobenius_norm(self, complement=False):
+        """ Frobenius norm (||S (*)  (data - WH) ||) of a data matrix and a low rank
+        approximation given by WH, weighted by S.
+
+        If complement = True, this will return this value weighted by (S-1)*-1
+
+        Parameters
+        ----------
+        complement : bool
+            If true, return F_norm weighted by complement of weight matrix
+
+        Returns:
+        -------
+        frobenius norm: F = || S (*) (data - WH)||
+
+        Needs redefining for WNMF
+
+        """
+
+        if complement:
+            S = self.comp_S
+        else:
+            S = self.S
+
+        # check if W and H exist
+        if hasattr(self,'H') and hasattr(self,'W'):
+            if scipy.sparse.issparse(self.data):
+                tmp = S * ( self.data[:,:] - (self.W * self.H) )
+                tmp = tmp.multiply(tmp).sum()
+                err = np.sqrt(tmp)
+            else:
+                err = np.sqrt(np.sum((S * (self.data[:, :] - np.dot(self.W, self.H))) ** 2))
+        else:
+            err = None
+
+        return err
 
 
 def _test():
