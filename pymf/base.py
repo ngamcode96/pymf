@@ -93,7 +93,7 @@ def simplex(d):
 
 class PyMFBase():
     """
-    PyMF Base Class. Does nothing useful apart from poviding some basic methods.
+    PyMF Base Class. Does nothing useful apart from providing some basic methods.
     """
     # some small value
 
@@ -207,7 +207,7 @@ class PyMFBase():
 
     def factorize(self, niter=100, show_progress=False,
                   compute_w=True, compute_h=True, compute_err=True,
-                  epoch_hook=False):
+                  epoch_hook=None):
         """ Factorize s.t. WH = data
 
         Parameters
@@ -264,7 +264,7 @@ class PyMFBase():
             else:
                 self._logger.info('Iteration: (%s/%s)'  %(i+1, niter))
 
-            if epoch_hook:
+            if epoch_hook is not None:
                 epoch_hook(self)
 
 
