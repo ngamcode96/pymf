@@ -26,9 +26,14 @@ class WNMF(PyMFBase):
 
     # (todo) Document this properly
     """
-    def __init__(self, data, S, num_bases=4, **kwargs):
+    def __init__(self, data, S, num_bases=4, mask_zeros=False, **kwargs):
         PyMFBase.__init__(self, data, num_bases, **kwargs)
-        self.S = S
+
+        if mask_zeros:
+            mask = (data != 0).astype(int)
+        else:
+            mask = np.ones(data.shape)
+        self.S = S * mask
         self.S_sqrt = np.sqrt(S)
         self.comp_S = (S - 1) * -1
 
