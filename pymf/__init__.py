@@ -33,5 +33,6 @@ from .sivm_search import *
 from .sivm_gsat import *
 from .wnmf import *
 from .awnmf import *
+from .abnmf import *
 from .base import *
 
