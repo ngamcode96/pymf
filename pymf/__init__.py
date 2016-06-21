@@ -32,6 +32,7 @@ from .sivm_sgreedy import *
 from .sivm_search import *
 from .sivm_gsat import *
 from .wnmf import *
+from .pmf import *
 from .awnmf import *
 from .abnmf import *
 from .base import *
