@@ -25,7 +25,8 @@ class AWNMF(PyMFBase):
 
     # (todo) Document this properly
     """
-    def __init__(self, data, S, augments, num_bases=4, mask_zeros=False, **kwargs):
+    def __init__(self, data, S, w_augments, h_augments=None, num_bases=4,
+                 mask_zeros=False, **kwargs):
         PyMFBase.__init__(self, data, num_bases, **kwargs)
 
         if mask_zeros:
@@ -35,25 +36,37 @@ class AWNMF(PyMFBase):
         self.S = S * mask
         self.S_sqrt = np.sqrt(S)
         self.comp_S = (S - 1) * -1
-        self.augments = augments
+        self.w_augments = w_augments
+        self.h_augments = h_augments
 
         S_shape = S.shape
 
         # Make sure augments have the right dimensions
-        assert augments.shape[0] == S_shape[0]
-        assert augments.shape[1] <= num_bases
+        assert w_augments.shape[0] == S_shape[0]
+        assert w_augments.shape[1] <= num_bases
 
-        m_range = list(range(0, S_shape[0]))
 
-        n_range = list(range(num_bases - augments.shape[1], num_bases))
+        # set w_augments index
 
-        self.augments_idx = np.ix_(m_range, n_range)
+        m_range_w = list(range(0, S_shape[0]))
+        n_range_w = list(range(num_bases - w_augments.shape[1],
+                               num_bases))
+        self.w_augments_idx = np.ix_(m_range_w, n_range_w)
+
+        # set h_augments index
+
+        #n_range_h = list(range(0, S_shape[1]))
+        #m_range_h = list(range(num_bases - h_augments.shape[1], num_bases))
+        #self.h_augments_idx = np.ix_(m_range_h, n_range_h)
 
     def _update_h(self):
         # pre init H1, and H2 (necessary for storing matrices on disk)
         H2 = np.dot(self.W.T, self.S_sqrt * np.dot(self.W, self.H)) + 10**-9
         self.H *= np.dot(self.W.T, self.S_sqrt * self.data[:, :])
         self.H /= H2
+
+        # Replace last m - n rows of H with augments
+        #self.H[self.h_augments_idx] = self.h_augments.T
 
     def _update_w(self):
         # pre init W1, and W2 (necessary for storing matrices on disk)
@@ -63,7 +76,7 @@ class AWNMF(PyMFBase):
         self.W /= np.sqrt(np.sum(self.W ** 2.0, axis=0))
 
         # Replace last n rows of W with augments
-        self.W[self.augments_idx] = self.augments
+        self.W[self.w_augments_idx] = self.w_augments
 
     def frobenius_norm(self, complement=False):
         """ Frobenius norm (||S (*)  (data - WH) ||) of a data matrix and a low rank

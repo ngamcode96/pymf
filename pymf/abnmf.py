@@ -71,22 +71,32 @@ class ABNMF(PyMFBase):
     _LAMB_INCREASE_W = 1.1
     _LAMB_INCREASE_H = 1.1
 
-    def __init__(self, data, augments, num_bases=4, **kwargs):
+    def __init__(self, data, w_augments, h_augments=None, num_bases=4, **kwargs):
         PyMFBase.__init__(self, data, num_bases, **kwargs)
 
-        self.augments = augments
+        self.w_augments = w_augments
+        self.h_augments = h_augments
 
         S_shape = data.shape
 
         # Make sure augments have the right dimensions
-        assert augments.shape[0] == S_shape[0]
-        assert augments.shape[1] <= num_bases
+        assert w_augments.shape[0] == S_shape[0]
+        assert w_augments.shape[1] <= num_bases
 
-        m_range = list(range(0, S_shape[0]))
+        #assert h_augments.shape[0] == S_shape[1]
 
-        n_range = list(range(num_bases - augments.shape[1], num_bases))
+        # set w_augments index
 
-        self.augments_idx = np.ix_(m_range, n_range)
+        m_range_w = list(range(0, S_shape[0]))
+        n_range_w = list(range(num_bases - w_augments.shape[1],
+                               num_bases))
+        self.w_augments_idx = np.ix_(m_range_w, n_range_w)
+
+        # set h_augments index
+
+        #n_range_h = list(range(0, S_shape[1]))
+        #m_range_h = list(range(num_bases - h_augments.shape[1], num_bases))
+        #self.h_augments_idx = np.ix_(m_range_h, n_range_h)
 
     def _update_h(self):
         """ 
@@ -98,13 +108,17 @@ class ABNMF(PyMFBase):
         self._lamb_W = self._LAMB_INCREASE_W * self._lamb_W
         self._lamb_H = self._LAMB_INCREASE_H * self._lamb_H
 
+        #self.H[self.h_augments_idx] = self.h_augments.T
+
+
     def _update_w(self):
         W1 = np.dot(self.data[:,:], self.H.T) + 3.0*self._lamb_W*(self.W**2)
         W2 = np.dot(self.W, np.dot(self.H, self.H.T)) + 2.0*self._lamb_W*(self.W**3) + self._lamb_W*self.W  + 10**-9
         self.W *= W1/W2
 
         # Replace last n rows of W with augments
-        self.W[self.augments_idx] = self.augments
+        self.W[self.w_augments_idx] = self.w_augments
+
 
     def factorize(self, 
                     niter=10, 

@@ -21,18 +21,30 @@ class PMF(PyMFBase):
         Poisson Matrix Factorisation
         Variational Bayesian factorisation
     """
-    def __init__(self, data, num_bases=4, smoothness=100, **kwargs):
+    def __init__(self, data, num_bases=4, augments=None, smoothness=100, **kwargs):
 
-        data = data.T
-
-        PyMFBase.__init__(self, data, num_bases, **kwargs)
 
         # Setup
         self.num_bases = num_bases
         self.smoothness = smoothness
         data_shape = data.shape
-        self.w_height = data_shape[1]
-        self.h_width = data_shape[0]
+        self.w_outer = data_shape[0]
+        self.h_outer = data_shape[1]
+
+        self.augments = augments
+
+        if self.augments is not None:
+            # Make sure augments have the right dimensions
+            assert augments.shape[0] == data.shape[0]
+            assert augments.shape[1] <= num_bases
+
+            m_range = list(range(0, data.shape[0]))
+
+            n_range = list(range(num_bases - augments.shape[1], num_bases))
+
+            self.augments_idx = np.ix_(m_range, n_range)
+
+        PyMFBase.__init__(self, data, num_bases, **kwargs)
 
         self._parse_args(**kwargs)
 
@@ -40,58 +52,76 @@ class PMF(PyMFBase):
         self.a = float(kwargs.get('a', 0.1))
         self.b = float(kwargs.get('b', 0.1))
 
-    def _init_w(self):
-        self.gamma_w = self.smoothness \
-            * np.random.gamma(self.smoothness, 1. / self.smoothness,
-                              size=(self.num_bases, self.w_height))
-        self.rho_w = self.smoothness \
-            * np.random.gamma(self.smoothness, 1. / self.smoothness,
-                              size=(self.num_bases, self.w_height))
-
-        self.Ew, self.Elogw = _compute_expectations(self.gamma_w, self.rho_w)
-        self.c = 1. / np.mean(self.Ew)
-
     def _init_h(self):
-        self.gamma_h = self.smoothness \
+        # variational parameters for beta / H
+        self.gamma_b = self.smoothness \
             * np.random.gamma(self.smoothness, 1. / self.smoothness,
-                              size=(self.h_width, self.num_bases))
-        self.rho_h = self.smoothness \
+                              size=(self.num_bases, self.h_outer))
+        self.rho_b = self.smoothness \
             * np.random.gamma(self.smoothness, 1. / self.smoothness,
-                              size=(self.h_width, self.num_bases))
+                              size=(self.num_bases, self.h_outer))
+        self.Eb, self.Elogb = _compute_expectations(self.gamma_b, self.rho_b)
 
-        self.Eh, self.Elogh = _compute_expectations(self.gamma_h, self.rho_h)
-
-    def _update_h(self):
-        ratio = self.data / self._xexplog()
-        self.gamma_h = self.a + np.exp(self.Elogh) * np.dot(
-            ratio, np.exp(self.Elogw).T)
-        self.rho_h = self.a * self.c + np.sum(self.Ew, axis=1)
-        self.Eh, self.Elogh = _compute_expectations(self.gamma_h, self.rho_h)
-        self.c = 1. / np.mean(self.Eh)
+    def _init_w(self):
+        # variational parameters for theta
+        self.gamma_t = self.smoothness \
+            * np.random.gamma(self.smoothness, 1. / self.smoothness,
+                              size=(self.w_outer, self.num_bases))
+        self.rho_t = self.smoothness \
+            * np.random.gamma(self.smoothness, 1. / self.smoothness,
+                              size=(self.w_outer, self.num_bases))
+        self.Et, self.Elogt = _compute_expectations(self.gamma_t, self.rho_t)
+        self.c = 1. / np.mean(self.Et)
 
     def _update_w(self):
         ratio = self.data / self._xexplog()
-        self.gamma_w = self.b + np.exp(self.Elogw) * np.dot(
-            np.exp(self.Elogh).T, ratio)
-        self.rho_w = self.b + np.sum(self.Eh, axis=0, keepdims=True).T
-        self.Ew, self.Elogw = _compute_expectations(self.gamma_w, self.rho_w)
+        self.gamma_t = self.a + np.exp(self.Elogt) * np.dot(
+            ratio, np.exp(self.Elogb).T)
+        self.rho_t = self.a * self.c + np.sum(self.Eb, axis=1)
+        self.Et, self.Elogt = _compute_expectations(self.gamma_t, self.rho_t)
+        self.c = 1. / np.mean(self.Et)
+
+        # Replace last n rows of W with augments
+        if self.augments is not None:
+            self.Et[self.augments_idx] = self.augments
+
+    def _update_h(self):
+        ratio = self.data / self._xexplog()
+        self.gamma_b = self.b + np.exp(self.Elogb) * np.dot(
+            np.exp(self.Elogt).T, ratio)
+        self.rho_b = self.b + np.sum(self.Et, axis=0, keepdims=True).T
+        self.Eb, self.Elogb = _compute_expectations(self.gamma_b, self.rho_b)
 
     def _xexplog(self):
-        return np.dot(np.exp(self.Elogh), np.exp(self.Elogw))
+        '''
+        sum_k exp(E[log theta_{ik} * beta_{kd}])
+        '''
+        return np.dot(np.exp(self.Elogt), np.exp(self.Elogb))
 
-    def frobenius_norm(self):
-        """
-        Not actually the Frobenius norm, but a comparable measure of the
-        error bound for the approximation
-        """
-        error = np.sum(self.data * np.log(self._xexplog()) - self.Eh.dot(self.Ew))
-        error += _gamma_term(self.a, self.a * self.c,
-                             self.gamma_h, self.rho_h,
-                             self.Eh, self.Elogh)
-        error += self.num_bases * self.data.shape[0] * self.a * np.log(self.c)
-        error += _gamma_term(self.b, self.b, self.gamma_w, self.rho_w,
-                             self.Ew, self.Elogw)
-        return error
+    def _bound(self):
+        bound = np.sum(self.data * np.log(self._xexplog()) - self.Et.dot(self.Eb))
+        bound += _gamma_term(self.a, self.a * self.c,
+                             self.gamma_t, self.rho_t,
+                             self.Et, self.Elogt)
+        bound += self.num_bases * self.data.shape[0] * self.a * np.log(self.c)
+        bound += _gamma_term(self.b, self.b, self.gamma_b, self.rho_b,
+                             self.Eb, self.Elogb)
+        return bound
+
+    def frobenius_norm(self, complement=False):
+
+        # check if W and H exist
+        if hasattr(self, 'Eb') and hasattr(self, 'Et'):
+            if scipy.sparse.issparse(self.data):
+                tmp = (self.data[:, :] - (self.Et * self.Eb))
+                tmp = tmp.multiply(tmp).sum()
+                err = np.sqrt(tmp)
+            else:
+                err = np.sqrt(np.sum((self.data[:, :] - np.dot(self.Et, self.Eb)) ** 2))
+        else:
+            err = None
+
+        return err
 
 
 def _compute_expectations(alpha, beta):
