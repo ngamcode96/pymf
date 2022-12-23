@@ -9,7 +9,7 @@ import logging
 import logging.config
 import scipy.sparse
 from numpy.linalg import eigh
-from scipy.misc import factorial
+from scipy.special import factorial
 
 __all__ = ["PyMFBase", "PyMFBase3", "eighk", "cmdet", "simplex"]
 _EPS = np.finfo(float).eps
